@@ -16,6 +16,14 @@ export default defineNuxtConfig({
 
   css: ['~/assets/css/main.css'],
 
+  // 💡 This block exposes your .env key safely to your server routes
+  runtimeConfig: {
+    openaiApiKey: process.env.OPENAI_API_KEY
+  },
+  future: {
+    compatibilityVersion: 4
+  },
+
   experimental: {
     viewTransition: true
   },
@@ -47,4 +55,5 @@ export default defineNuxtConfig({
       }
     }
   }
+
 })

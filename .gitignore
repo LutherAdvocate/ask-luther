@@ -27,3 +27,6 @@ logs
 .history
 .vercel
 .env*.local
+
+# CUSTOM
+vector-index.json
