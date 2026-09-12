@@ -1,14 +1,12 @@
 import type { UIMessage } from 'ai'
-import { convertToModelMessages, createUIMessageStream, createUIMessageStreamResponse, generateText, isStepCount, smoothStream, streamText, toUIMessageStream } from 'ai'
-import { db, schema } from 'hub:db'
-import { and, eq } from 'drizzle-orm'
+import { convertToModelMessages, createUIMessageStream, createUIMessageStreamResponse, smoothStream, streamText, toUIMessageStream } from 'ai'
 import { z } from 'zod'
 import { openai } from '@ai-sdk/openai'
 import { getContextFromVectorDB } from '../../search-db.js'
 
 defineRouteMeta({
   openAPI: {
-    description: 'Chat with AI.',
+    description: 'Chat with AI without database overhead.',
     tags: ['ai']
   }
 })
@@ -36,56 +34,17 @@ TONE & BEHAVIOR:
 - Start all responses with content, never with a heading`
 
 export default defineEventHandler(async (event) => {
-  const session = await getUserSession(event)
-
-  const { id } = await getValidatedRouterParams(event, z.object({
-    id: z.string()
-  }).parse)
-
   const { messages } = await readValidatedBody(event, z.object({
     model: z.string(),
     messages: z.array(z.custom<UIMessage>())
   }).parse)
 
-  const chat = await db.query.chats.findFirst({
-    where: () => and(
-      eq(schema.chats.id, id as string),
-      eq(schema.chats.userId, session.user?.id || session.id)
-    ),
-    with: {
-      messages: true
-    }
-  })
-  if (!chat) {
-    throw createError({ statusCode: 404, statusMessage: 'Chat not found' })
-  }
-
-  if (!chat.title) {
-    const { text: title } = await generateText({
-      model: openai('gpt-4o-mini'),
-      instructions: `You are a title generator for a chat. Generate a short title based on the message. Less than 30 characters.`,
-      prompt: JSON.stringify(messages)
-    })
-
-    await db.update(schema.chats).set({ title }).where(eq(schema.chats.id, id as string))
-  }
-
   const lastMessage = messages[messages.length - 1]
-  if (lastMessage?.role === 'user' && messages.length > 1) {
-    await db.insert(schema.messages).values({
-      id: lastMessage.id,
-      chatId: id as string,
-      role: 'user',
-      parts: lastMessage.parts
-    }).onConflictDoUpdate({ target: schema.messages.id, set: { parts: lastMessage.parts } })
-  }
-
-  // Extract query text string
+  
   const userTextQuery = typeof lastMessage.parts === 'string' 
     ? lastMessage.parts 
     : (lastMessage.parts as any).text || ''
 
-  // 💡 SAFETY GATE: If the input query is empty string or initialization handshake, bypass math
   let historicalContext = ""
   if (userTextQuery.trim().length > 0) {
     historicalContext = await getContextFromVectorDB(userTextQuery, 3)
@@ -96,7 +55,6 @@ export default defineEventHandler(async (event) => {
   const abortController = new AbortController()
   event.node.req.on('close', () => abortController.abort())
 
-  // Fast locked text model provider brain
   const targetModelInstance = openai('gpt-4o')
 
   const stream = createUIMessageStream({
@@ -106,32 +64,14 @@ export default defineEventHandler(async (event) => {
         model: targetModelInstance,
         instructions: combinedInstructions,
         messages: await convertToModelMessages(messages),
-        // 💡 Cleaned out reasoning config array fields to clear the remaining warnings
-        stopWhen: isStepCount(5),
         experimental_transform: smoothStream()
       })
 
-      if (!chat.title) {
-        writer.write({
-          type: 'data-chat-title',
-          data: { message: 'Generating title...' },
-          transient: true
-        })
-      }
-
       writer.merge(toUIMessageStream({
         stream: result.stream,
-        sendSources: true,
+        sendSources: false,
         sendReasoning: true
       }))
-    },
-    onEnd: async ({ messages }) => {
-      await db.insert(schema.messages).values(messages.map(message => ({
-        id: message.id,
-        chatId: chat.id,
-        role: message.role as 'user' | 'assistant',
-        parts: message.parts
-      }))).onConflictDoNothing()
     }
   })
 
