@@ -13,17 +13,10 @@ export async function getContextFromVectorDB(userQuery, matchCount = 3) {
   try {
     let database = [];
 
-    // 💡 AUTOMATED ROUTING: If running on Vercel production, read the asset from your new Blob Store
-    if (process.env.VERCEL || process.env.BLOB_STORE_ID) {
-      // Look up your unique public storage URL from your Vercel Environment Variables
-      // (This matches the prefix you selected on the creation window layout screen)
-      const blobUrl = process.env.BLOB_READ_WRITE_TOKEN 
-        ? `https://${process.env.BLOB_STORE_ID}://`
-        : process.env.BLOB_URL || '';
-
-      if (!blobUrl) {
-        throw new Error("Missing Vercel Blob system environment configuration values.");
-      }
+    // 💡 AUTOMATED ROUTING: If running on Vercel production, read from our direct cloud bucket link
+    if (process.env.VERCEL) {
+      // ⚠️ REPLACE THIS STRING VALUE WITH YOUR EXACT COPIED VERCEL BLOB DIRECT FILE URL:
+      const blobUrl = 'https://vercel-storage.com';
 
       console.log(`🌐 Fetching text analysis vectors from cloud bucket: ${blobUrl}`);
       const response = await fetch(blobUrl);
@@ -31,7 +24,7 @@ export async function getContextFromVectorDB(userQuery, matchCount = 3) {
       
       database = await response.json();
     } else {
-      // Otherwise, look for your offline local file container asset during testing
+      // Otherwise, look for your offline local file container asset during local testing
       const dbPath = path.resolve('./server/vector-index.json');
       const rawData = await fs.readFile(dbPath, 'utf-8');
       database = JSON.parse(rawData);
@@ -53,6 +46,6 @@ export async function getContextFromVectorDB(userQuery, matchCount = 3) {
     return topMatches.map(match => `[Source: ${match.sourceFile}]\n${match.content}`).join('\n\n');
   } catch (error) {
     console.error("❌ Error performing database vector search:", error);
-    return "";
+    return [];
   }
 }
