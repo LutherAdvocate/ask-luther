@@ -13,9 +13,9 @@ export async function getContextFromVectorDB(userQuery, matchCount = 3) {
   try {
     let database = [];
 
-    // 💡 AUTOMATED ROUTING: If running on Vercel production, read from our direct cloud bucket link
+    // 💡 AUTOMATED ROUTING: If running live on Vercel production, read directly from your cloud store link
     if (process.env.VERCEL) {
-      // ⚠️ REPLACE THIS STRING VALUE WITH YOUR EXACT COPIED VERCEL BLOB DIRECT FILE URL:
+      // ⚠️ Use your direct Vercel Blob public download link here
       const blobUrl = 'https://vercel-storage.com';
 
       console.log(`🌐 Fetching text analysis vectors from cloud bucket: ${blobUrl}`);
@@ -24,7 +24,7 @@ export async function getContextFromVectorDB(userQuery, matchCount = 3) {
       
       database = await response.json();
     } else {
-      // Otherwise, look for your offline local file container asset during local testing
+      // Otherwise, look for your offline local file container asset during testing on your computer
       const dbPath = path.resolve('./server/vector-index.json');
       const rawData = await fs.readFile(dbPath, 'utf-8');
       database = JSON.parse(rawData);
